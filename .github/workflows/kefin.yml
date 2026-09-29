@@ -1,0 +1,64 @@
+name: Wholphin Kefin build
+
+on:
+  push:
+    branches:
+      - kefin
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GRADLE_OPTS: "-Dorg.gradle.jvmargs='-Xmx8g -XX:MaxMetaspaceSize=1024m'"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup
+        uses: ./.github/actions/setup
+
+      - name: Restore signing key
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.android/debug.keystore
+          key: wholphin-kefin-debug-keystore-v1
+
+      - name: Create signing key
+        run: |
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair -keystore "$HOME/.android/debug.keystore" \
+              -storepass android -alias androiddebugkey -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Wholphin Kefin, OU=TV, O=Home, L=Home, S=Home, C=IT"
+          fi
+
+      - name: Tag a local version
+        run: git tag -f v0.0.0-kefin
+
+      - name: Build debug app
+        env:
+          ORG_GRADLE_PROJECT_WholphinExtensionsUsername: "${{ secrets.EXTENSIONS_USERNAME }}"
+          ORG_GRADLE_PROJECT_WholphinExtensionsPassword: "${{ secrets.EXTENSIONS_PASSWORD }}"
+        run: ./gradlew assembleDefaultDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: wholphin-kefin-debug
+          path: app/build/outputs/apk/default/debug/*.apk
+          if-no-files-found: error

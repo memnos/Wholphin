@@ -132,6 +132,7 @@ class TestHomeRowSamples {
                 imageUrlService = mockk(),
                 suggestionService = mockk(),
                 displayPreferencesService = mockk(),
+                kefinHomeService = mockk(),
             )
 
         val str = """{

@@ -21,6 +21,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.isSpecified
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -97,19 +99,27 @@ fun Backdrop(
             animationSpec = tween(1250),
             label = "dynamic_backdrop_tertiary",
         )
+        // Animated colors are interpolated in Oklab. Some Android 14 TV
+        // firmwares crash in Paint.setColor when that color space id is used.
+        // Animated colors are interpolated in Oklab. Some Android 14 TV
+        // firmwares crash in Paint.setColor when that color space id is used.
+        val safePrimary = animPrimary.deviceSafe()
+        val safeSecondary = animSecondary.deviceSafe()
+        val safeTertiary = animTertiary.deviceSafe()
+        val safeBackground = baseBackgroundColor.deviceSafe()
         Box(
             modifier =
                 modifier
                     .fillMaxSize()
                     .drawBehind {
-                        drawRect(color = baseBackgroundColor)
+                        drawRect(color = safeBackground)
                         val start = if (isRtl) size.width else 0f
                         val end = if (isRtl) 0f else size.width
                         // Top Left (Vibrant/Muted)
                         drawRect(
                             brush =
                                 Brush.radialGradient(
-                                    colors = listOf(animSecondary, Color.Transparent),
+                                    colors = listOf(safeSecondary, Color.Transparent),
                                     center = Offset(start, 0f),
                                     radius = size.width * 0.8f,
                                 ),
@@ -118,7 +128,7 @@ fun Backdrop(
                         drawRect(
                             brush =
                                 Brush.radialGradient(
-                                    colors = listOf(animPrimary, Color.Transparent),
+                                    colors = listOf(safePrimary, Color.Transparent),
                                     center = Offset(end, size.height),
                                     radius = size.width * 0.8f,
                                 ),
@@ -129,7 +139,7 @@ fun Backdrop(
                                 Brush.radialGradient(
                                     colors =
                                         listOf(
-                                            baseBackgroundColor,
+                                            safeBackground,
                                             Color.Transparent,
                                         ),
                                     center = Offset(start, size.height),
@@ -140,7 +150,7 @@ fun Backdrop(
                         drawRect(
                             brush =
                                 Brush.radialGradient(
-                                    colors = listOf(animTertiary, Color.Transparent),
+                                    colors = listOf(safeTertiary, Color.Transparent),
                                     center = Offset(end, 0f),
                                     radius = size.width * 0.8f,
                                 ),
@@ -215,3 +225,5 @@ fun Backdrop(
         }
     }
 }
+
+private fun Color.deviceSafe(): Color = if (isSpecified) Color(toArgb()) else Color.Transparent

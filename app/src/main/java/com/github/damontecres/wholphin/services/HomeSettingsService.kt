@@ -98,6 +98,7 @@ class HomeSettingsService
         private val imageUrlService: ImageUrlService,
         private val suggestionService: SuggestionService,
         private val displayPreferencesService: DisplayPreferencesService,
+        private val kefinHomeService: KefinHomeService,
     ) {
         @OptIn(ExperimentalSerializationApi::class)
         val jsonParser =
@@ -220,6 +221,32 @@ class HomeSettingsService
          */
         suspend fun loadCurrentSettings(userId: UUID) {
             Timber.v("Getting setting for %s", userId)
+            val kefinRows =
+                try {
+                    kefinHomeService.loadExtraRows()
+                } catch (ex: Exception) {
+                    Timber.w(ex, "KefinTweaks home could not be loaded")
+                    null
+                }
+            if (kefinRows != null) {
+                val web =
+                    try {
+                        parseFromWebConfig(userId)
+                    } catch (ex: Exception) {
+                        Timber.w(ex, "Web home could not be loaded")
+                        null
+                    }
+                val base =
+                    web?.rows?.map { it.config }.orEmpty().ifEmpty {
+                        listOf(HomeRowConfig.ContinueWatchingCombined())
+                    }
+                val resolved =
+                    (base + kefinRows).mapIndexed { index, config ->
+                        resolve(index, config)
+                    }
+                currentSettings.update { HomePageResolvedSettings(userId, resolved) }
+                return
+            }
             // User local then server/remote otherwise create a default
             val settings =
                 try {

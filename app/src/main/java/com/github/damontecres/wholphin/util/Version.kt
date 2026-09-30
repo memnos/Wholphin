@@ -77,7 +77,8 @@ data class Version(
         }
 
     companion object {
-        private val VERSION_REGEX = Regex("v?(\\d+)\\.(\\d+)\\.(\\d+)(-(\\d+)-g([a-zA-Z0-9]+))?")
+        private val VERSION_REGEX =
+            Regex("v?(\\d+)\\.(\\d+)\\.(\\d+)(?:-[A-Za-z][A-Za-z0-9]*)?(-(\\d+)-g([a-zA-Z0-9]+))?")
 
         /**
          * Parse a version string throwing if it is invalid

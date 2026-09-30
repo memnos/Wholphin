@@ -223,7 +223,7 @@ class HomeSettingsService
             Timber.v("Getting setting for %s", userId)
             val kefinRows =
                 try {
-                    kefinHomeService.loadExtraRows()
+                    kefinHomeService.loadExtraRows(userId)
                 } catch (ex: Exception) {
                     Timber.w(ex, "KefinTweaks home could not be loaded")
                     null

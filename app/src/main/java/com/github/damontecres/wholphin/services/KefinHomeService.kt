@@ -9,6 +9,7 @@ import org.jellyfin.sdk.api.client.ApiClient
 import org.jellyfin.sdk.api.client.HttpMethod
 import org.jellyfin.sdk.model.UUID
 import org.jellyfin.sdk.model.api.BaseItemKind
+import org.jellyfin.sdk.model.api.ItemFilter
 import org.jellyfin.sdk.model.api.ItemSortBy
 import org.jellyfin.sdk.model.api.SortOrder
 import org.jellyfin.sdk.model.api.request.GetItemsRequest
@@ -49,13 +50,17 @@ class KefinHomeService
         /**
          * @return extra home rows, or null when KefinTweaks config cannot be read
          */
-        suspend fun loadExtraRows(): List<HomeRowConfig>? {
+        suspend fun loadExtraRows(userId: UUID): List<HomeRowConfig>? {
             val home = loadHomeScreen() ?: return null
             val rows = mutableListOf<Pair<Int, HomeRowConfig>>()
             rows += recentlyAdded(home)
             rows += recentlyReleased(home)
+            rows += upcoming(home)
+            rows += watchlist(home)
+            rows += watchAgain(home)
             rows += customSections(home)
             rows += seasonal(home)
+            rows += popularNetworks(home, userId)
             Timber.i("KefinTweaks home rows: %s", rows.size)
             return rows.sortedBy { it.first }.map { it.second }
         }
@@ -139,6 +144,109 @@ class KefinHomeService
                         ),
                     viewOptions = viewOptions(section.text("cardFormat")),
                 )
+        }
+
+        private fun upcoming(home: JsonObject): List<Pair<Int, HomeRowConfig>> =
+            listOfNotNull(
+                namedSection(home, "upcoming", "Upcoming", 20, enabledByDefault = true) { section ->
+                    GetItemsRequest(
+                        recursive = true,
+                        includeItemTypes = listOf(BaseItemKind.EPISODE),
+                        sortBy = listOf(ItemSortBy.PREMIERE_DATE),
+                        sortOrder = listOf(SortOrder.ASCENDING),
+                        limit = rowLimit(section),
+                        minPremiereDate = LocalDate.now().atStartOfDay(),
+                    )
+                },
+            )
+
+        private fun watchlist(home: JsonObject): List<Pair<Int, HomeRowConfig>> =
+            listOfNotNull(
+                namedSection(home, "watchlist", "Watchlist", 60, enabledByDefault = false) { section ->
+                    GetItemsRequest(
+                        recursive = true,
+                        includeItemTypes =
+                            listOf(
+                                BaseItemKind.MOVIE,
+                                BaseItemKind.SERIES,
+                                BaseItemKind.SEASON,
+                                BaseItemKind.EPISODE,
+                            ),
+                        filters = listOf(ItemFilter.LIKES),
+                        sortBy = listOf(sortBy(section.text("sortOrder"))),
+                        sortOrder = listOf(sortOrder(section.text("sortOrderDirection"))),
+                        limit = rowLimit(section),
+                    )
+                },
+            )
+
+        private fun watchAgain(home: JsonObject): List<Pair<Int, HomeRowConfig>> =
+            listOfNotNull(
+                namedSection(home, "watchAgain", "Watch Again", 62, enabledByDefault = false) { section ->
+                    GetItemsRequest(
+                        recursive = true,
+                        includeItemTypes = listOf(BaseItemKind.MOVIE),
+                        filters = listOf(ItemFilter.IS_PLAYED),
+                        sortBy =
+                            listOf(
+                                section.text("sortOrder")?.let { sortBy(it) } ?: ItemSortBy.RANDOM,
+                            ),
+                        sortOrder = listOf(sortOrder(section.text("sortOrderDirection"))),
+                        limit = rowLimit(section),
+                    )
+                },
+            )
+
+        private fun namedSection(
+            home: JsonObject,
+            key: String,
+            defaultName: String,
+            defaultOrder: Int,
+            enabledByDefault: Boolean,
+            request: (JsonObject) -> GetItemsRequest,
+        ): Pair<Int, HomeRowConfig>? {
+            val section = home[key] as? JsonObject
+            if (section == null) {
+                if (!enabledByDefault) return null
+            } else {
+                val enabled = section.bool("enabled")
+                val isOn = if (enabledByDefault) enabled != false else enabled == true
+                if (!isOn) return null
+            }
+            val resolved = section ?: JsonObject(emptyMap())
+            return (resolved.int("order") ?: defaultOrder) to
+                HomeRowConfig.GetItems(
+                    name = resolved.text("name") ?: defaultName,
+                    getItems = request(resolved),
+                    viewOptions = viewOptions(resolved.text("cardFormat")),
+                )
+        }
+
+        private suspend fun popularNetworks(
+            home: JsonObject,
+            userId: UUID,
+        ): List<Pair<Int, HomeRowConfig>> {
+            val section = home["popularTVNetworks"] as? JsonObject ?: return emptyList()
+            if (section.bool("enabled") != true) return emptyList()
+            val parentId = firstTvLibrary(userId) ?: return emptyList()
+            return listOf(
+                (section.int("order") ?: 61) to
+                    HomeRowConfig.Studios(parentId = parentId),
+            )
+        }
+
+        private suspend fun firstTvLibrary(userId: UUID): UUID? {
+            val views =
+                getJson("/Users/{userId}/Views", mapOf("userId" to userId)) as? JsonObject
+                    ?: return null
+            val items = views["Items"] as? JsonArray ?: views["items"] as? JsonArray ?: return null
+            return items
+                .mapNotNull { it as? JsonObject }
+                .firstOrNull { item ->
+                    val type = item.text("CollectionType") ?: item.text("collectionType") ?: ""
+                    type.equals("tvshows", ignoreCase = true)
+                }?.let { it.text("Id") ?: it.text("id") }
+                ?.toUuidOrNull()
         }
 
         private fun customSections(home: JsonObject): List<Pair<Int, HomeRowConfig>> {

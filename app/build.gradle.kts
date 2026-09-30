@@ -34,7 +34,11 @@ val av1ModuleExists =
 val mpvModuleExists =
     providers.provider { project.file("libs/wholphin-mpv-release.aar").exists() }
 val extensionsRepoActive =
-    providers.provider { project.hasProperty("WholphinExtensionsUsername") }
+    providers.provider {
+        // An empty GitHub Actions secret still sets the property. Treat that as absent,
+        // matching settings.gradle.kts, otherwise Gradle looks for packages that are not published.
+        !project.findProperty("WholphinExtensionsUsername")?.toString().isNullOrBlank()
+    }
 
 // See https://issuetracker.google.com/issues/402800800
 val isBuildingBundle =
